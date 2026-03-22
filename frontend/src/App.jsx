@@ -1,0 +1,36 @@
+import { useState, useCallback } from 'react'
+import Navbar from './components/Navbar.jsx'
+import Home from './pages/Home.jsx'
+import Category from './pages/Category.jsx'
+import Papers from './pages/Papers.jsx'
+import PaperView from './pages/PaperView.jsx'
+
+export default function App() {
+  // ── Router state ──────────────────────────────────────────
+  const [page, setPage]   = useState('home')
+  const [exam, setExam]   = useState(null)
+  const [sub,  setSub]    = useState(null)
+  const [year, setYear]   = useState(null)
+  const [paper, setPaper] = useState(null)
+
+  // ── Navigation helper ─────────────────────────────────────
+  const go = useCallback((p, opts = {}) => {
+    setPage(p)
+    if (opts.exam  !== undefined) setExam(opts.exam)
+    if (opts.sub   !== undefined) setSub(opts.sub)
+    if (opts.year  !== undefined) setYear(opts.year)
+    if (opts.paper !== undefined) setPaper(opts.paper)
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0)
+  }, [])
+
+  return (
+    <div className="app">
+      <Navbar page={page} exam={exam} sub={sub} year={year} paper={paper} go={go} />
+
+      {page === 'home'     && <Home go={go} />}
+      {page === 'category' && <Category exam={exam} go={go} />}
+      {page === 'papers'   && <Papers  exam={exam} sub={sub} year={year} go={go} />}
+      {page === 'view'     && <PaperView exam={exam} sub={sub} year={year} paper={paper} go={go} />}
+    </div>
+  )
+}
