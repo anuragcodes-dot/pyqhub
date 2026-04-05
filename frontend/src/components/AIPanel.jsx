@@ -1,45 +1,101 @@
 import { useState } from 'react'
 import { parseAIText } from '../utils/helpers.js'
-import { ai } from '../utils/api.js'
 import { SparkleIcon, RefreshIcon } from './Icons.jsx'
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 export default function AIPanel({ exam, sub, year, paper }) {
   const [status, setStatus] = useState('idle')
   const [aiText, setAiText] = useState('')
-  const [cached, setCached] = useState(false)
+
+  const buildPrompt = () =>
+    `You are an expert exam coach in India. Analyse this previous year question paper for a student.
+
+Exam: ${exam?.full}
+Paper: ${sub?.name} — ${paper?.title || paper?.t}
+Year: ${year}
+Subjects: ${(paper?.subjects || paper?.subs || []).join(', ')}
+
+Give a concise structured analysis with EXACTLY these headings:
+**Top Important Topics**
+List 5-6 high-weightage topics.
+
+**Difficulty Distribution**
+Rough % split: Easy / Medium / Hard.
+
+**Subject-wise Weightage**
+Approximate % of total marks per subject.
+
+**Must-Practice Question Types**
+3-4 question types that repeat across years.
+
+**Quick Study Strategy**
+3-4 bullet points for last-minute prep.
+
+Be specific, direct, practical. No fluff.`
 
   const runAnalysis = async () => {
     setStatus('loading')
     setAiText('')
-    setCached(false)
-    try {
-      const data = await ai.analyseCustom({
-        examFull: exam?.full, subName: sub?.name,
-        paperTitle: paper?.title, year, subjects: paper?.subjects || [],
-      })
-      setAiText(data.analysis || 'No analysis returned.')
-      setCached(data.cached || false)
-      setStatus('done')
-    } catch {
-      await runDirectFallback()
-    }
-  }
 
-  const runDirectFallback = async () => {
+    // Try 1: Backend API (secure, recommended for production)
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
+      const res = await fetch(`${API}/ai/analyse-custom`, {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514', max_tokens: 900,
-          messages: [{ role: 'user', content: `You are an expert exam coach in India. Analyse this previous year question paper.\n\nExam: ${exam?.full}\nPaper: ${sub?.name} — ${paper?.title}\nYear: ${year}\nSubjects: ${paper?.subjects?.join(', ')}\n\nProvide a concise structured analysis with these exact headings:\n**Top Important Topics**\nList 5-6 high-weightage topics for this paper.\n\n**Difficulty Distribution**\nRough % split of Easy / Medium / Hard questions.\n\n**Subject-wise Weightage**\nFor each subject, approximate % of total marks.\n\n**Must-Practice Question Types**\n3-4 specific question types that repeat across years.\n\n**Quick Study Strategy**\n3-4 bullet points for effective last-minute prep.\n\nBe specific, direct, and practical. No fluff.` }]
-        })
+          examFull:   exam?.full,
+          subName:    sub?.name,
+          paperTitle: paper?.title || paper?.t,
+          year,
+          subjects:   paper?.subjects || paper?.subs || [],
+        }),
       })
       const data = await res.json()
-      setAiText((data.content || []).map(c => c.text || '').join('') || 'No analysis returned.')
-      setStatus('done')
+      if (data.success && data.analysis) {
+        setAiText(data.analysis)
+        setStatus('done')
+        return
+      }
     } catch {
-      setAiText('Could not connect. Make sure the backend is running on port 5000, or check your internet connection.')
+      // Backend not available — fall through to direct call
+    }
+
+    // Try 2: Direct Anthropic API call
+    try {
+      const headers = {
+        'Content-Type':      'application/json',
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      }
+
+      // Only attach x-api-key if a key is explicitly provided in .env
+      const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+      if (apiKey) headers['x-api-key'] = apiKey
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method:  'POST',
+        headers,
+        body: JSON.stringify({
+          model:      'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          messages:   [{ role: 'user', content: buildPrompt() }],
+        }),
+      })
+
+      const data = await res.json()
+      if (data.error) throw new Error(data.error.message)
+
+      const txt = (data.content || []).map(c => c.text || '').join('')
+      setAiText(txt || 'No analysis returned.')
+      setStatus('done')
+    } catch (err) {
+      setAiText(
+        `⚠️ AI analysis requires either:\n\n` +
+        `1. Backend running on port 5000 (run npm run dev from root)\n\n` +
+        `2. Or add VITE_ANTHROPIC_API_KEY=your-key to frontend/.env\n\n` +
+        `Error: ${err.message}`
+      )
       setStatus('error')
     }
   }
@@ -52,6 +108,7 @@ export default function AIPanel({ exam, sub, year, paper }) {
         <span className="ai-badge">Claude AI</span>
       </div>
       <div className="ai-body">
+
         {status === 'idle' && (
           <div className="ai-idle">
             <div className="ai-idle-icon">🔍</div>
@@ -63,24 +120,41 @@ export default function AIPanel({ exam, sub, year, paper }) {
             <p className="ai-note">Takes 5–10 seconds</p>
           </div>
         )}
+
         {status === 'loading' && (
           <div className="ai-loading">
-            <div className="dots"><div className="dot" /><div className="dot" /><div className="dot" /></div>
+            <div className="dots">
+              <div className="dot" />
+              <div className="dot" />
+              <div className="dot" />
+            </div>
             <p>Claude is analysing the paper…</p>
           </div>
         )}
+
         {(status === 'done' || status === 'error') && (
           <div>
-            {cached && <div style={{ fontSize: 11, color: '#888880', marginBottom: 12 }}>⚡ Cached result</div>}
-            <div className="ai-result">
+            <div className={`ai-result ${status === 'error' ? 'ai-error' : ''}`}>
               {parseAIText(aiText).map((part, i) => {
-                if (part.type === 'h') return <div key={i} className="ai-h">{part.text}</div>
-                if (part.type === 'ul') return <ul key={i} className="ai-ul">{part.items.map((item, j) => <li key={j} className="ai-li">{item}</li>)}</ul>
+                if (part.type === 'h')
+                  return <div key={i} className="ai-h">{part.text}</div>
+                if (part.type === 'ul')
+                  return (
+                    <ul key={i} className="ai-ul">
+                      {part.items.map((item, j) => (
+                        <li key={j} className="ai-li">{item}</li>
+                      ))}
+                    </ul>
+                  )
                 return <p key={i} className="ai-p">{part.text}</p>
               })}
             </div>
-            <button className="btn btn-outline btn-full" style={{ marginTop: 18 }} onClick={() => { setStatus('idle'); setAiText('') }}>
-              <RefreshIcon /> New Analysis
+            <button
+              className="btn btn-outline btn-full"
+              style={{ marginTop: 18 }}
+              onClick={() => { setStatus('idle'); setAiText('') }}
+            >
+              <RefreshIcon /> Try Again
             </button>
           </div>
         )}
