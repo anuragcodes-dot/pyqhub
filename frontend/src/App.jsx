@@ -16,19 +16,34 @@ function AppInner() {
   const [sub,   setSub]   = useState(null)
   const [year,  setYear]  = useState(null)
   const [paper, setPaper] = useState(null)
+  const [history, setHistory] = useState([])
 
   const go = useCallback((p, opts = {}) => {
-    setPage(p)
-    if (opts.exam  !== undefined) setExam(opts.exam)
-    if (opts.sub   !== undefined) setSub(opts.sub)
-    if (opts.year  !== undefined) setYear(opts.year)
-    if (opts.paper !== undefined) setPaper(opts.paper)
+    // Handle back navigation
+    if (p === 'back' && history.length > 0) {
+      const newHistory = [...history]
+      const prevState = newHistory.pop()
+      setHistory(newHistory)
+      setPage(prevState.page)
+      setExam(prevState.exam)
+      setSub(prevState.sub)
+      setYear(prevState.year)
+      setPaper(prevState.paper)
+    } else if (p !== 'back') {
+      // Push current state to history before navigating
+      setHistory([...history, { page, exam, sub, year, paper }])
+      setPage(p)
+      if (opts.exam  !== undefined) setExam(opts.exam)
+      if (opts.sub   !== undefined) setSub(opts.sub)
+      if (opts.year  !== undefined) setYear(opts.year)
+      if (opts.paper !== undefined) setPaper(opts.paper)
+    }
     setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0)
-  }, [])
+  }, [history, page, exam, sub, year, paper])
 
   return (
     <div className="app">
-      <Navbar page={page} exam={exam} sub={sub} year={year} paper={paper} go={go} />
+      <Navbar page={page} exam={exam} sub={sub} year={year} paper={paper} go={go} canGoBack={history.length > 0} />
 
       {page === 'home'      && <Home go={go} />}
       {page === 'category'  && <Category exam={exam} go={go} />}

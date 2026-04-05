@@ -1,7 +1,8 @@
 import { useTheme } from '../context/ThemeContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import { ChevronLeft } from './Icons.jsx'
 
-export default function Navbar({ page, exam, sub, year, paper, go }) {
+export default function Navbar({ page, exam, sub, year, paper, go, canGoBack }) {
   const { dark, toggle } = useTheme()
   const { user, logout, isLoggedIn } = useAuth()
 
@@ -9,6 +10,17 @@ export default function Navbar({ page, exam, sub, year, paper, go }) {
 
   return (
     <nav className="nav">
+      {/* Back Button */}
+      {canGoBack && (
+        <button
+          className="nav-back"
+          onClick={() => go('back')}
+          title="Go back"
+        >
+          <ChevronLeft />
+        </button>
+      )}
+
       {/* Brand */}
       <span className="nav-brand" onClick={() => go('home')}>
         PYQ<span>Hub</span>
